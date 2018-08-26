@@ -5,9 +5,9 @@
 
 #include "DHT.h"
 
-#define DHTPIN 4     // what digital pin the DHT22 is conected to
-#define IR_PIN 0
-#define UV_PIN 14
+#define DHTPIN 4     // D2
+#define IR_PIN 0     // D3
+#define UV_PIN 14    // D5
 #define DHTTYPE DHT22   // there are multiple kinds of DHT sensors
 
 DHT dht(DHTPIN, DHTTYPE);
@@ -27,8 +27,8 @@ float t;
 unsigned long prev = millis();
 unsigned long prevThingSpeak = millis();
 
-float lowTemp = 29.00;
-float highTemp = 30.00;
+float lowTemp = 30.00;
+float highTemp = 31.00;
 
 short uvLamp = 2; // 0 off, 1 on, 2 not set
 short uvLampMode = 0; // 0 auto, 1 manual
@@ -98,7 +98,7 @@ void loop() {
           irLamp = 1;
           Serial.println("Automatic IR lamp on");
           digitalWrite(IR_PIN, HIGH);
-        } else if ((isnan(t) || t > lowTemp) && (irLamp == 1 || irLamp == 2)) {
+        } else if ((isnan(t) || t > highTemp) && (irLamp == 1 || irLamp == 2)) {
           irLamp = 0;
           Serial.println("Automatic IR lamp off (sensor-based)");
           digitalWrite(IR_PIN, LOW);
@@ -140,15 +140,18 @@ void loop() {
     handleHttpRequest(client);
   }
 
-  // update ThingSpeak
+  updateThingSpeak(now);
+}
+
+void updateThingSpeak(unsigned long now) {
   if (now - prevThingSpeak > 30000) {
     prevThingSpeak = now;
-
+    
     Serial.println("Sending data to ThingSpeak server");
-  
+    
     if (clientThingSpeak.connect(thingSpeakServer, 80)) {  
       String postStr = thingSpeakApiKey;
-
+      
       postStr +="&field1=";
       postStr += String(t);
       postStr +="&field2=";
@@ -275,6 +278,19 @@ void handleHttpRequest(WiFiClient &client) {
     } else if (req.indexOf("/resetDevice") != -1) {
       Serial.println("Reset device request");
       val = "Reset device not yet implemented";
+    } else if (req.indexOf("/set?") != -1) {
+      Serial.println("Set");
+      if (req.indexOf("lowTemp") != -1) {
+        String lowTempString = req.substring(req.indexOf("=") + 1, req.lastIndexOf(" "));
+        lowTemp = lowTempString.toFloat();
+        Serial.println("lowTempString: <" + lowTempString + "> lowTemp: " + String(lowTemp));
+        val = "Setting low temperature to: " + String(lowTemp);
+      } else if (req.indexOf("highTemp") != -1) {
+        String highTempString = req.substring(req.indexOf("=") + 1, req.lastIndexOf(" "));
+        highTemp = highTempString.toFloat();
+        Serial.println("highTempString: <" + highTempString + "> highTemp: " + String(highTemp));
+        val = "Setting high temperature to: " + String(highTemp);
+      }      
     } else {
       Serial.println("Unsupported request.");
       val = "Unsupported request. Supported commands:<br/>";
@@ -285,6 +301,8 @@ void handleHttpRequest(WiFiClient &client) {
       val += "    - /uvLamp/forceOn<br/>";
       val += "    - /uvLamp/forceOff<br/>";
       val += "    - /uvLamp/auto<br/>";
+      val += "    - /set?lowTemp=29.0<br/>";
+      val += "    - /set?highTemp=30.0<br/>";
     }
     
   
