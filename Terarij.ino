@@ -1,23 +1,21 @@
-/*
-    This sketch demonstrates how to set up a simple HTTP-like server.
-    The server will set a GPIO pin depending on the request
-      http://server_ip/gpio/0 will set the GPIO2 low,
-      http://server_ip/gpio/1 will set the GPIO2 high
-    server_ip is the IP address of the ESP8266 module, will be
-    printed to Serial when the module is connected.
-*/
-
 #include <ESP8266WiFi.h>
+
+#include <EasyNTPClient.h>
+#include <WiFiUdp.h>
 
 #include "DHT.h"
 
 #define DHTPIN 4     // what digital pin the DHT22 is conected to
+#define IR_PIN 0
+#define UV_PIN 14
 #define DHTTYPE DHT22   // there are multiple kinds of DHT sensors
 
 DHT dht(DHTPIN, DHTTYPE);
 
-const char* ssid = "Infoart";
-const char* password = "Iart236WEP707";
+//const char* ssid = "Infoart";
+//const char* password = "Iart236WEP707";
+const char* ssid = "AMIS-1-002196675318";
+const char* password = "malamerica";
 
 // Create an instance of the server
 // specify the port to listen on as an argument
@@ -25,6 +23,27 @@ WiFiServer server(80);
 
 float h;
 float t;
+
+unsigned long prev = millis();
+unsigned long prevThingSpeak = millis();
+
+float lowTemp = 29.00;
+float highTemp = 30.00;
+
+short uvLamp = 2; // 0 off, 1 on, 2 not set
+short uvLampMode = 0; // 0 auto, 1 manual
+
+short irLamp = 2; // 0 off, 1 on, 2 not set
+short irLampMode = 0; // 0 auto, 1 manual
+
+WiFiUDP udp;
+
+EasyNTPClient ntpClient(udp, "hr.pool.ntp.org", (2*60*60));
+
+WiFiClient clientThingSpeak;
+String thingSpeakApiKey = "QFJR5FAY6XNTE4NZ";     //  Write API key from ThingSpeak
+const char* thingSpeakServer = "api.thingspeak.com";
+
 
 void setup() {
   Serial.begin(9600);
@@ -49,19 +68,23 @@ void setup() {
 
   // Print the IP address
   Serial.println(WiFi.localIP());
+
+  pinMode(IR_PIN, OUTPUT);
+  pinMode(UV_PIN, OUTPUT);
 }
-
-unsigned long prev = millis();
-
-float lowTemp = 28.00;
-float highTemp = 29.00;
-bool uvLamp = false;
 
 void loop() {
   unsigned long now = millis();
 
-  if (now - prev > 3000) {
+  if (now - prev > 5000) {
     prev = now;
+    
+    unsigned long epoch = ntpClient.getUnixTime();
+    //Serial.println(epoch);
+    byte second = epoch%60; epoch /= 60;
+    byte minute = epoch%60; epoch /= 60;
+    byte hour   = epoch%24; epoch /= 24;
+    Serial.println(String(hour) + ":" + String(minute) + ":" + String(second));
   
     // read sensor data
     h = dht.readHumidity();
@@ -69,22 +92,85 @@ void loop() {
 
     Serial.println("Temp: " + String(t) + "   Humidity: " + String(h));
 
-    if (t < lowTemp && uvLamp) {
-      uvLamp = false;
-      Serial.println("Turning UV lamp on");
-      // turn on uv lamp relay
+    if (irLampMode == 0) { // auto
+      if ((hour >= 7 && hour <= 21) || epoch == 0) {
+        if (!isnan(t) && t <= lowTemp && (irLamp == 0 || irLamp == 2)) {
+          irLamp = 1;
+          Serial.println("Automatic IR lamp on");
+          digitalWrite(IR_PIN, HIGH);
+        } else if ((isnan(t) || t > lowTemp) && (irLamp == 1 || irLamp == 2)) {
+          irLamp = 0;
+          Serial.println("Automatic IR lamp off (sensor-based)");
+          digitalWrite(IR_PIN, LOW);
+        }
+      } else if (irLamp == 1 || irLamp == 2) {
+        irLamp = 0;
+        Serial.println("Automatic IR lamp off (time-based)");
+        digitalWrite(IR_PIN, LOW);
+      }
     }
 
-    if (t > highTemp && !uvLamp) {
-      uvLamp = true;
-      Serial.println("Turning UV lamp off");
-      // turn on uv lamp relay
+    if (uvLampMode == 0) { // auto
+      if (epoch == 0) {
+        if (irLamp == 0 && (uvLamp == 1 || uvLamp == 2)) {
+          uvLamp = 0;
+          Serial.println("Automatic UV lamp off (temperature fallback)");
+          digitalWrite(UV_PIN, LOW);
+        } else if (irLamp == 1 && (uvLamp == 0 || uvLamp == 2)) {
+          uvLamp = 1;
+          Serial.println("Automatic UV lamp on (temperature fallback)");
+          digitalWrite(UV_PIN, HIGH);
+        }
+      } else if ((hour >= 6 && hour <= 8) || (hour >= 11 && hour <= 13) || (hour >= 16 && hour <= 20)) {
+        if (uvLamp == 0 || uvLamp == 2) {
+          uvLamp = 1;
+          Serial.println("Automatic UV lamp on");
+          digitalWrite(UV_PIN, HIGH);
+        }
+      } else if (uvLamp == 1 || uvLamp == 2) {
+          uvLamp = 0;
+          Serial.println("Automatic UV lamp off");
+          digitalWrite(UV_PIN, LOW);
+      }
     }
   }
   
   WiFiClient client = server.available();
   if (client) {
     handleHttpRequest(client);
+  }
+
+  // update ThingSpeak
+  if (now - prevThingSpeak > 30000) {
+    prevThingSpeak = now;
+
+    Serial.println("Sending data to ThingSpeak server");
+  
+    if (clientThingSpeak.connect(thingSpeakServer, 80)) {  
+      String postStr = thingSpeakApiKey;
+
+      postStr +="&field1=";
+      postStr += String(t);
+      postStr +="&field2=";
+      postStr += String(h);
+      postStr +="&field3=";
+      postStr += String(irLamp);
+      postStr +="&field4=";
+      postStr += String(uvLamp);
+      postStr += "\r\n\r\n";
+      
+      clientThingSpeak.print("POST /update HTTP/1.1\n");
+      clientThingSpeak.print("Host: api.thingspeak.com\n");
+      clientThingSpeak.print("Connection: close\n");
+      clientThingSpeak.print("X-THINGSPEAKAPIKEY: "+thingSpeakApiKey+"\n");
+      clientThingSpeak.print("Content-Type: application/x-www-form-urlencoded\n");
+      clientThingSpeak.print("Content-Length: ");
+      clientThingSpeak.print(postStr.length());
+      clientThingSpeak.print("\n\n");
+      clientThingSpeak.print(postStr);
+      
+      clientThingSpeak.stop();
+    }
   }
 }
 
@@ -101,7 +187,7 @@ void handleHttpRequest(WiFiClient &client) {
     if (tryCycles++>500) {
       aborted = true;
       Serial.println();
-      Serial.print("Aborted");
+      Serial.print("Aborted! (maximuim try cycles reached)");
       break;
     }
   }
@@ -116,18 +202,89 @@ void handleHttpRequest(WiFiClient &client) {
 
     String val;
     
-    if (req.indexOf("/get") != -1) {
+    if (req.indexOf("/info") != -1) {
       Serial.println("Get data request");
       val = "Temp: " + String(t) + "   Humidity: " + String(h);
-    } else if (req.indexOf("/set") != -1) {
-      Serial.println("Set parameters request");
-      val = "Setting not yet implemented";
+
+      val += "<br/><br/>IR lamp mode: ";
+      if (irLampMode == 0) {
+        val += "auto";
+      } else {
+        val += "manual";
+      }
+      val += "<br/>IR lamp status: ";
+      if (irLamp == 0) {
+        val += "off";
+      } else if (irLamp == 1) {
+        val += "on";
+      } else if (irLamp ==2) {
+        val += "not set";
+      }
+
+      val += "<br/><br/>UV lamp mode: ";
+      if (uvLampMode == 0) {
+        val += "auto";
+      } else {
+        val += "manual";
+      }
+      val += "<br/>UV lamp status: ";
+      if (uvLamp == 0) {
+        val += "off";
+      } else if (uvLamp == 1) {
+        val += "on";
+      } else if (uvLamp ==2) {
+        val += "not set";
+      }
+
+      val += "<br/><br/>Low temp set to: " + String(lowTemp) + "<br/>";
+      val += "High temp set to: " + String(highTemp) + "<br/>";
+    } else if (req.indexOf("/uvLamp") != -1) {
+      Serial.println("UV lamp request");
+      if (req.indexOf("/forceOn") != -1) {
+        val = "Forcing UV lamp ON";
+        uvLamp = 1;
+        uvLampMode = 1;
+        digitalWrite(UV_PIN, HIGH);
+      } else if (req.indexOf("/forceOff") != -1) {
+        val = "Forcing UV lamp OFF";
+        uvLamp = 0;
+        uvLampMode = 1;
+        digitalWrite(UV_PIN, LOW);
+      } else if (req.indexOf("/auto") != -1) {
+        val = "UV lamp set to auto";
+        uvLamp = 2;
+        uvLampMode = 0;
+      }
+    } else if (req.indexOf("/irLamp") != -1) {
+      Serial.println("IR lamp request");
+      if (req.indexOf("/forceOn") != -1) {
+        val = "Forcing IR lamp ON";
+        irLamp = 1;
+        irLampMode = 1;
+        digitalWrite(IR_PIN, HIGH);
+      } else if (req.indexOf("/forceOff") != -1) {
+        val = "Forcing IR lamp OFF";
+        irLamp = 0;
+        irLampMode = 1;
+        digitalWrite(IR_PIN, LOW);
+      } else if (req.indexOf("/auto") != -1) {
+        val = "IR lamp set to auto";
+        irLamp = 2;
+        irLampMode = 0;
+      }
     } else if (req.indexOf("/resetDevice") != -1) {
       Serial.println("Reset device request");
       val = "Reset device not yet implemented";
     } else {
-      Serial.println("Unsupported request");
-      val = "Unsupported request";
+      Serial.println("Unsupported request.");
+      val = "Unsupported request. Supported commands:<br/>";
+      val += "    - /info<br/>";
+      val += "    - /irLamp/forceOn<br/>";
+      val += "    - /irLamp/forceOff<br/>";
+      val += "    - /irLamp/auto<br/>";
+      val += "    - /uvLamp/forceOn<br/>";
+      val += "    - /uvLamp/forceOff<br/>";
+      val += "    - /uvLamp/auto<br/>";
     }
     
   
@@ -139,11 +296,12 @@ void handleHttpRequest(WiFiClient &client) {
     // Send the response to the client
     client.print(s);
   } else {
-    client.flush();
-
     // Prepare error response
     String s = prepareErrorResponse();
     client.print(s);
+    
+    client.flush();
+    client.stop();
   }
     
   delay(1);
