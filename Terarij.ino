@@ -92,8 +92,11 @@ void loop() {
 
     Serial.println("Temp: " + String(t) + "   Humidity: " + String(h));
 
-    float highTempAdjusted = highTemp - sq(abs(hour - 15) / 4);
-    float lowTempAdjusted = lowTemp - sq(abs(hour - 15) / 4);
+    float highTempAdjusted = highTemp - sq(abs(hour - 15.0) / 2.0);
+    float lowTempAdjusted = lowTemp - sq(abs(hour - 15.0) / 2.0);
+
+    //Serial.println("highTempAdjusted: " + String(highTempAdjusted));
+    //Serial.println("lowTempAdjusted: " + String(lowTempAdjusted));
     
     if (irLampMode == 0) { // auto
       if ((hour >= 7 && hour <= 21) || epoch == 0) {
