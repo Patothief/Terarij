@@ -92,13 +92,16 @@ void loop() {
 
     Serial.println("Temp: " + String(t) + "   Humidity: " + String(h));
 
+    float highTempAdjusted = highTemp - sq(abs(hour - 15) / 4);
+    float lowTempAdjusted = lowTemp - sq(abs(hour - 15) / 4);
+    
     if (irLampMode == 0) { // auto
       if ((hour >= 7 && hour <= 21) || epoch == 0) {
-        if (!isnan(t) && t <= lowTemp && (irLamp == 0 || irLamp == 2)) {
+        if (!isnan(t) && t <= lowTempAdjusted && (irLamp == 0 || irLamp == 2)) {
           irLamp = 1;
           Serial.println("Automatic IR lamp on");
           digitalWrite(IR_PIN, HIGH);
-        } else if ((isnan(t) || t > highTemp) && (irLamp == 1 || irLamp == 2)) {
+        } else if ((isnan(t) || t > highTempAdjusted) && (irLamp == 1 || irLamp == 2)) {
           irLamp = 0;
           Serial.println("Automatic IR lamp off (sensor-based)");
           digitalWrite(IR_PIN, LOW);
