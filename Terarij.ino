@@ -9,6 +9,8 @@
 
 #include "DHT.h"
 
+#include "time.h"
+
 #define DHTPIN 4     // D2
 #define IR_PIN 0     // D3
 #define UV_PIN 14    // D5
@@ -34,7 +36,11 @@ unsigned long prevOWM = millis();
 
 float lowTemp = 31.00;
 float highTemp = 32.00;
+float realTempOffset = 0.0;
 
+unsigned long sunrizeTime;
+unsigned long sunsetTime;
+          
 short uvLamp = 2; // 0 off, 1 on, 2 not set
 short uvLampMode = 0; // 0 auto, 1 manual
 
@@ -93,12 +99,15 @@ void loop() {
     prev = now;
     
     unsigned long epoch = ntpClient.getUnixTime();
-    //Serial.println(epoch);
+    Serial.println("epoch: " + String(epoch));
     byte second = epoch%60; epoch /= 60;
     byte minute = epoch%60; epoch /= 60;
     hour        = epoch%24; epoch /= 24;
     Serial.println(String(hour) + ":" + String(minute) + ":" + String(second));
-  
+
+    unsigned long newEpoch = ((epoch * 24 + hour) * 60 + minute) * 60 + second;
+    Serial.println("newEpoch: " + String(newEpoch));
+    
     // read sensor data
     h = dht.readHumidity();
     t = dht.readTemperature();
@@ -107,10 +116,14 @@ void loop() {
 
     float highTempAdjusted = highTemp;
     float lowTempAdjusted = lowTemp;
-
+    
     if (calculationMode == 0) { // adjusted
       highTempAdjusted = getAdjustedValue(highTemp, hour);
       lowTempAdjusted = getAdjustedValue(lowTemp, hour);
+
+      sunriseEpoch = ((epoch * 24 + 7) * 60) * 60;
+      sunsetEpoch = ((epoch * 24 + 21) * 60) * 60;
+    } else if (calculationMode == 1) { // real
     }
     
     //Serial.println("highTempAdjusted: " + String(highTempAdjusted));
@@ -404,7 +417,14 @@ void getOWMData(unsigned long now) {
           }
           
           int temp = owm_data["main"]["temp"];
-          Serial.println("OWM temp: " + temp);
+          sunrizeEpoch = owm_data["sys"]["sunrise"];
+          sunsetEpoch = owm_data["sys"]["sunset"];
+          String description = owm_data["weather"][0]["description"];
+          
+          Serial.println("OWM temp: " + String(temp));
+          Serial.println("OWM sunrizeEpoch: " + String(sunrizeEpoch));
+          Serial.println("OWM sunsetEpoch: " + String(sunsetEpoch));
+          Serial.println("OWM description: " + description);
 
           lowTemp = temp - 0.5 + realTempOffset;
           highTemp = temp + 0.5 + realTempOffset;
