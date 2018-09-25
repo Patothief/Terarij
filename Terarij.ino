@@ -37,10 +37,12 @@ float highTemp = 31.00;
 float realTempOffset = 0.0;
 
 short uvLamp = 2; // 0 off, 1 on, 2 not set
-short uvLampMode = 2; // 0 auto, 1 manual, 2 real
+short uvLampMode = 0; // 0 auto, 1 manual
 
 short irLamp = 2; // 0 off, 1 on, 2 not set
-short irLampMode = 2; // 0 auto, 1 manual, 2 real
+short irLampMode = 0; // 0 auto, 1 manual
+
+short calculationMode = 1; // 0 adjusted, 1 real
 
 WiFiUDP udp;
 
@@ -104,9 +106,14 @@ void loop() {
 
     Serial.println("Temp: " + String(t) + "   Humidity: " + String(h));
 
-    float highTempAdjusted = getAdjustedValue(highTemp, hour);
-    float lowTempAdjusted = getAdjustedValue(lowTemp, hour);
+    float highTempAdjusted = highTemp;
+    float lowTempAdjusted = lowTemp;
 
+    if (calculationMode == 0) { // adjusted
+      highTempAdjusted = getAdjustedValue(highTemp, hour);
+      lowTempAdjusted = getAdjustedValue(lowTemp, hour);
+    }
+    
     //Serial.println("highTempAdjusted: " + String(highTempAdjusted));
     //Serial.println("lowTempAdjusted: " + String(lowTempAdjusted));
     
@@ -379,31 +386,36 @@ void getOWMData(unsigned long now) {
       
       Serial.println("Getting data from OWM server");
 
-      http.begin("http://api.openweathermap.org/data/2.5/weather?id="+owmCityId+"&units=metric" + "&appid="+OWM_API_KEY;
+      clientOWM.begin("http://api.openweathermap.org/data/2.5/weather?id="+owmCityId+"&units=metric" + "&appid="+OWM_API_KEY);
       
-      int httpCode = http.GET();
+      int httpCode = clientOWM.GET();
+      
+      StaticJsonBuffer<1024> jsonBuffer;
       
       if (httpCode > 0) {
         if (httpCode == HTTP_CODE_OK) {
-          String payload = http.getString();
+          String payload = clientOWM.getString();
           Serial.println(payload);
           JsonObject& owm_data = jsonBuffer.parseObject(payload);
           
           if (!owm_data.success()) {
             Serial.println("Parsing failed");
-            http.end();
+            clientOWM.end();
             return;
           }
           
           int temp = owm_data["main"]["temp"];
           Serial.println("OWM temp: " + temp);
 
-          // lowTemp = temp - 0.5 + realTempOffset;
-          // highTemp = temp + 0.5 + realTempOffset;
+          lowTemp = temp - 0.5 + realTempOffset;
+          highTemp = temp + 0.5 + realTempOffset;
+
+          Serial.println("lowTemp: " + String(lowTemp));
+          Serial.println("highTemp: " + String(highTemp));
         }
       }
 
-      http.end();
+      clientOWM.end();
     }
 }
 
