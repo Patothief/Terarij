@@ -27,8 +27,8 @@ float t;
 unsigned long prev = millis();
 unsigned long prevThingSpeak = millis();
 
-float lowTemp = 29.00;
-float highTemp = 30.00;
+float lowTemp = 31.00;
+float highTemp = 32.00;
 
 short uvLamp = 2; // 0 off, 1 on, 2 not set
 short uvLampMode = 0; // 0 auto, 1 manual
@@ -101,7 +101,7 @@ void loop() {
     //Serial.println("lowTempAdjusted: " + String(lowTempAdjusted));
     
     if (irLampMode == 0) { // auto
-      if ((hour >= 7 && hour < 22) || epoch == 0) {
+      if ((hour >= 7 && hour < 21) || epoch == 0) {
         if (!isnan(t) && t <= lowTempAdjusted && (irLamp == 0 || irLamp == 2)) {
           irLamp = 1;
           Serial.println("Automatic IR lamp on");
@@ -129,7 +129,7 @@ void loop() {
           Serial.println("Automatic UV lamp on (temperature fallback)");
           digitalWrite(UV_PIN, HIGH);
         }
-      } else if ((hour >= 6 && hour < 9) || (hour >= 11 && hour < 14) || (hour >= 16 && hour < 21)) {
+      } else if ((hour >= 7 && hour < 9) || (hour >= 11 && hour < 14) || (hour >= 16 && hour < 21)) {
         if (uvLamp == 0 || uvLamp == 2) {
           uvLamp = 1;
           Serial.println("Automatic UV lamp on");
@@ -350,4 +350,3 @@ String prepareErrorResponse() {
 float getAdjustedValue(float value, int hour) {
   return value - sq(abs(hour - 15.0) / 4.0);
 }
-
