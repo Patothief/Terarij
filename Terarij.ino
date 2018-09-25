@@ -1,3 +1,7 @@
+#include <ESP8266HTTPClient.h>
+
+#include <ArduinoJson.h>
+
 #include <ESP8266WiFi.h>
 
 #include <EasyNTPClient.h>
@@ -26,15 +30,17 @@ float t;
 
 unsigned long prev = millis();
 unsigned long prevThingSpeak = millis();
+unsigned long prevOWM = millis();
 
 float lowTemp = 30.00;
 float highTemp = 31.00;
+float realTempOffset = 0.0;
 
 short uvLamp = 2; // 0 off, 1 on, 2 not set
-short uvLampMode = 0; // 0 auto, 1 manual
+short uvLampMode = 2; // 0 auto, 1 manual, 2 real
 
 short irLamp = 2; // 0 off, 1 on, 2 not set
-short irLampMode = 0; // 0 auto, 1 manual
+short irLampMode = 2; // 0 auto, 1 manual, 2 real
 
 WiFiUDP udp;
 
@@ -43,6 +49,10 @@ EasyNTPClient ntpClient(udp, "hr.pool.ntp.org", (2*60*60));
 WiFiClient clientThingSpeak;
 String thingSpeakApiKey = "QFJR5FAY6XNTE4NZ";     //  Write API key from ThingSpeak
 const char* thingSpeakServer = "api.thingspeak.com";
+
+HTTPClient clientOWM;
+String OWM_API_KEY = "1635308b354d17ba10ad50eade774a06";  // Open Weather Map API Key
+String owmCityId = "2562305";                           // Open Weather Map CityID
 
 
 void setup() {
@@ -141,6 +151,8 @@ void loop() {
   }
 
   updateThingSpeak(now);
+
+  getOWMData(now);
 }
 
 void updateThingSpeak(unsigned long now) {
@@ -290,7 +302,17 @@ void handleHttpRequest(WiFiClient &client) {
         highTemp = highTempString.toFloat();
         Serial.println("highTempString: <" + highTempString + "> highTemp: " + String(highTemp));
         val = "Setting high temperature to: " + String(highTemp);
-      }      
+      } else if (req.indexOf("cityId") != -1) {
+        String cityIdString = req.substring(req.indexOf("=") + 1, req.lastIndexOf(" "));
+        owmCityId = cityIdString.toInt();
+        Serial.println("cityIdString: <" + cityIdString + "> owmCityId: " + String(owmCityId));
+        val = "Setting owmCityId to: " + String(owmCityId);
+      } else if (req.indexOf("realTempOffset") != -1) {
+        String realTempOffsetString = req.substring(req.indexOf("=") + 1, req.lastIndexOf(" "));
+        realTempOffset = realTempOffsetString.toFloat();
+        Serial.println("realTempOffsetString: <" + realTempOffsetString + "> realTempOffset: " + String(realTempOffset));
+        val = "Setting realTempOffset to: " + String(realTempOffset);
+      }   
     } else {
       Serial.println("Unsupported request.");
       val = "Unsupported request. Supported commands:<br/>";
@@ -298,11 +320,15 @@ void handleHttpRequest(WiFiClient &client) {
       val += "    - /irLamp/forceOn<br/>";
       val += "    - /irLamp/forceOff<br/>";
       val += "    - /irLamp/auto<br/>";
+      val += "    - /irLamp/real<br/>";
       val += "    - /uvLamp/forceOn<br/>";
       val += "    - /uvLamp/forceOff<br/>";
       val += "    - /uvLamp/auto<br/>";
+      val += "    - /uvLamp/real<br/>";
       val += "    - /set?lowTemp=29.0<br/>";
       val += "    - /set?highTemp=30.0<br/>";
+      val += "    - /set?cityId=2562305<br/>";
+      val += "    - /set?realTempOffset=1.5<br/>";
     }
     
   
@@ -337,5 +363,39 @@ String prepareResponse(String val) {
 
 String prepareErrorResponse() {
   return "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>\r\nCould not read request</html>\n";
+}
+
+void getOWMData(unsigned long now) {
+    if (now - prevOWM > 15000) {
+      prevOWM = now;
+      
+      Serial.println("Getting data from OWM server");
+
+      http.begin("http://api.openweathermap.org/data/2.5/weather?id="+owmCityId+"&units=metric" + "&appid="+OWM_API_KEY;
+      
+      int httpCode = http.GET();
+      
+      if (httpCode > 0) {
+        if (httpCode == HTTP_CODE_OK) {
+          String payload = http.getString();
+          Serial.println(payload);
+          JsonObject& owm_data = jsonBuffer.parseObject(payload);
+          
+          if (!owm_data.success()) {
+            Serial.println("Parsing failed");
+            http.end();
+            return;
+          }
+          
+          int temp = owm_data["main"]["temp"];
+          Serial.println("OWM temp: " + temp);
+
+          // lowTemp = temp - 0.5 + realTempOffset;
+          // highTemp = temp + 0.5 + realTempOffset;
+        }
+      }
+
+      http.end();
+    }
 }
 
