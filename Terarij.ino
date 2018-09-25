@@ -83,6 +83,8 @@ void setup() {
   pinMode(UV_PIN, OUTPUT);
 }
 
+byte hour;
+
 void loop() {
   unsigned long now = millis();
 
@@ -93,7 +95,7 @@ void loop() {
     //Serial.println(epoch);
     byte second = epoch%60; epoch /= 60;
     byte minute = epoch%60; epoch /= 60;
-    byte hour   = epoch%24; epoch /= 24;
+    hour        = epoch%24; epoch /= 24;
     Serial.println(String(hour) + ":" + String(minute) + ":" + String(second));
   
     // read sensor data
@@ -102,13 +104,19 @@ void loop() {
 
     Serial.println("Temp: " + String(t) + "   Humidity: " + String(h));
 
+    float highTempAdjusted = getAdjustedValue(highTemp, hour);
+    float lowTempAdjusted = getAdjustedValue(lowTemp, hour);
+
+    //Serial.println("highTempAdjusted: " + String(highTempAdjusted));
+    //Serial.println("lowTempAdjusted: " + String(lowTempAdjusted));
+    
     if (irLampMode == 0) { // auto
-      if ((hour >= 7 && hour <= 21) || epoch == 0) {
-        if (!isnan(t) && t <= lowTemp && (irLamp == 0 || irLamp == 2)) {
+      if ((hour >= 7 && hour < 22) || epoch == 0) {
+        if (!isnan(t) && t <= lowTempAdjusted && (irLamp == 0 || irLamp == 2)) {
           irLamp = 1;
           Serial.println("Automatic IR lamp on");
           digitalWrite(IR_PIN, HIGH);
-        } else if ((isnan(t) || t > highTemp) && (irLamp == 1 || irLamp == 2)) {
+        } else if ((isnan(t) || t > highTempAdjusted) && (irLamp == 1 || irLamp == 2)) {
           irLamp = 0;
           Serial.println("Automatic IR lamp off (sensor-based)");
           digitalWrite(IR_PIN, LOW);
@@ -131,7 +139,7 @@ void loop() {
           Serial.println("Automatic UV lamp on (temperature fallback)");
           digitalWrite(UV_PIN, HIGH);
         }
-      } else if ((hour >= 6 && hour <= 8) || (hour >= 11 && hour <= 13) || (hour >= 16 && hour <= 20)) {
+      } else if ((hour >= 6 && hour < 9) || (hour >= 11 && hour < 14) || (hour >= 16 && hour < 21)) {
         if (uvLamp == 0 || uvLamp == 2) {
           uvLamp = 1;
           Serial.println("Automatic UV lamp on");
@@ -147,7 +155,7 @@ void loop() {
   
   WiFiClient client = server.available();
   if (client) {
-    handleHttpRequest(client);
+    handleHttpRequest(client, hour);
   }
 
   updateThingSpeak(now);
@@ -189,7 +197,7 @@ void updateThingSpeak(unsigned long now) {
   }
 }
 
-void handleHttpRequest(WiFiClient &client) {
+void handleHttpRequest(WiFiClient &client, byte hour) {
   Serial.print("New client");
   
   int tryCycles = 0; // prevent client wait endless loop
@@ -251,8 +259,8 @@ void handleHttpRequest(WiFiClient &client) {
         val += "not set";
       }
 
-      val += "<br/><br/>Low temp set to: " + String(lowTemp) + "<br/>";
-      val += "High temp set to: " + String(highTemp) + "<br/>";
+      val += "<br/><br/>High temp set to: " + String(highTemp) + ", Adjusted: " + String(getAdjustedValue(highTemp, hour));
+      val += "<br/>Low temp set to: " + String(lowTemp) + ", Adjusted: " + String(getAdjustedValue(lowTemp, hour));
     } else if (req.indexOf("/uvLamp") != -1) {
       Serial.println("UV lamp request");
       if (req.indexOf("/forceOn") != -1) {
@@ -397,5 +405,9 @@ void getOWMData(unsigned long now) {
 
       http.end();
     }
+}
+
+float getAdjustedValue(float value, int hour) {
+  return value - sq(abs(hour - 15.0) / 4.0);
 }
 
