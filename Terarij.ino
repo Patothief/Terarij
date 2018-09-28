@@ -12,8 +12,8 @@
 
 //const char* ssid = "Infoart";
 //const char* password = "Iart236WEP707";
-//const char* ssid = "AMIS-1-002196675318";
-//const char* password = "malamerica";
+const char* ssid = "AMIS-1-002196675318";
+const char* password = "malamerica";
 
 DHT dht(DHT_PIN, DHT_TYPE);
 WiFiServer server(80);
@@ -119,20 +119,20 @@ void setup() {
 }
 
 void loop() {
-    unsigned long now = millis();
-    unsigned long nowNtp = ntpClient.getUnixTime();
-
+	unsigned long now = millis();
+	unsigned long nowNtp = ntpClient.getUnixTime();
+	
 	readSensorData(now);
-
-    getOwmData(now, nowNtp);
-    
+	
+	getOwmData(now, nowNtp);
+	
 	funcCalculate(now, nowNtp);
-
+	
 	updateLamps(now, nowNtp);
 	
-    handleHttpRequest();
-
-    //updateThingSpeak(now);
+	handleHttpRequest();
+	
+	updateThingSpeak(now);
 }
 
 void readSensorData(unsigned long now) {
