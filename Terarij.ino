@@ -5,26 +5,27 @@
 #include <WiFiUdp.h>
 #include <DHT.h>
 
-#define DHTPIN 4     // D2
+#define DHT_PIN 4     // D2
 #define IR_PIN 0     // D3
 #define UV_PIN 14    // D5
-#define DHTTYPE DHT22   // there are multiple kinds of DHT sensors
+#define DHT_TYPE DHT22   // there are multiple kinds of DHT sensors
 
 //const char* ssid = "Infoart";
 //const char* password = "Iart236WEP707";
-const char* ssid = "AMIS-1-002196675318";
-const char* password = "malamerica";
+//const char* ssid = "AMIS-1-002196675318";
+//const char* password = "malamerica";
 
-DHT dht(DHTPIN, DHTTYPE);
+DHT dht(DHT_PIN, DHT_TYPE);
 WiFiServer server(80);
 
 const unsigned long DHT_TIME = 10000; // 10000
-const unsigned long OWM_TIME = 40 * 60000; // 40 * 60000
+const unsigned long OWM_TIME = 3 * 60000; // 40 * 60000
 const unsigned long LAMPS_TIME = 10000; // 10000
 const unsigned long THING_SPEAK_TIME = 30000; // 30000
-const unsigned long FUNC_TIME = 30 * 60000; // 30 * 60000;
+const unsigned long FUNC_TIME = 10 * 60000; // 30 * 60000;
 
 const long BIG_NEGATIVE = -10000000;
+const unsigned long BIG_POSITIVE = 4294967295;
 
 long prevDht = BIG_NEGATIVE;
 long prevOwm = BIG_NEGATIVE;
@@ -43,18 +44,21 @@ const char* thingSpeakServer = "api.thingspeak.com";
 
 HTTPClient clientOwm;
 const String OWM_API_KEY = "1635308b354d17ba10ad50eade774a06";	 // Open Weather Map API Key
-String owmCityId = "2219235"; // Awbari, Libya
+String owmCityId = "2446796"; // Blima, Niger
 unsigned long owmSunrise;
 unsigned long owmSunset;
 float owmTemp;
 String owmDescription;
-float tempOffsetOwm = 0.0;
+float owmTempOffset = -5.0;
 
 float dhtHumidity;
 float dhtTemp;
 
-float funcLowTemp = 30.00;
-float funcHighTemp = 31.00;
+float funcLowTemp = 31.00;
+float funcHighTemp = 32.00;
+
+float fallbackLowTemp = 27.00;
+float fallbackHighTemp = 28.00;
 
 float lowTemp;
 float highTemp;
@@ -84,9 +88,16 @@ void setup() {
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
 
+    int tryCycles = 0; // prevent connecting endless loop
+        
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
+
+		if (tryCycles++ > 30) {
+			Serial.println("Aborted! (maximuim try cycles reached).");
+			break;
+		}
     }
     Serial.println("");
     Serial.println("WiFi connected");
@@ -121,7 +132,7 @@ void loop() {
 	
     handleHttpRequest();
 
-    updateThingSpeak(now);
+    //updateThingSpeak(now);
 }
 
 void readSensorData(unsigned long now) {
@@ -151,58 +162,99 @@ void getOwmData(unsigned long now, unsigned long nowNtp) {
 
         StaticJsonBuffer<1024> jsonBuffer;
 
-        if (httpCode > 0) {
-            if (httpCode == HTTP_CODE_OK) {
-                String payload = clientOwm.getString();
-                Serial.println(payload);
-                
-                JsonObject& owmData = jsonBuffer.parseObject(payload);
+        if (httpCode == HTTP_CODE_OK) {
+            String payload = clientOwm.getString();
+            Serial.println(payload);
+            
+            JsonObject& owmData = jsonBuffer.parseObject(payload);
 
-                if (!owmData.success()) {
-                    Serial.println("Parsing failed");
-                    clientOwm.end();
-                    return;
-                }
-
-                owmTemp = owmData["main"]["temp"];
-                owmSunrise = owmData["sys"]["sunrise"];
-                owmSunset = owmData["sys"]["sunset"];
-                owmDescription = owmData["weather"][0]["main"].as<String>();;
-
-                Serial.println("OWM temp: " + String(owmTemp));
-                Serial.println("OWM sunrise (UTC): " + unixDateToHumanString(owmSunrise));
-                Serial.println("OWM sunset (UTC): " + unixDateToHumanString(owmSunset));
-                Serial.println("OWM description: " + owmDescription);
-
-				if (uvLampMode == 1) {
-					uvStart = owmSunrise + UTC_OFFSET;
-					uvStop = owmSunset + UTC_OFFSET;
-
-					if (owmDescription == "Rain") {
-						uvStart = 0;
-						uvStop = 0;
-						Serial.println("TSetting UV lamp start/stop to zero due to rain");
-					}
-
-	                Serial.println("Setting uvStart to: " + unixDateToHumanString(uvStart));
-					Serial.println("Setting uvStop to: " + unixDateToHumanString(uvStop));
-				}
-
-				if (irLampMode == 1) {
-			    	unsigned long dayStart = nowNtp / 86400;
-    	
-					irStart = owmSunrise + UTC_OFFSET;
-					irStop = unixDateFromStartAndHour(dayStart, IR_STOP_HOUR);;
-					
-					lowTemp = owmTemp - 0.5 + tempOffsetOwm;
-					highTemp = owmTemp + 0.5 + tempOffsetOwm;
-
-	                Serial.println("Setting irStart to: " + unixDateToHumanString(irStart));
-					Serial.println("Setting irStop to: " + unixDateToHumanString(irStop));
-					Serial.println("Setting lowTemp to: " + String(lowTemp));
-					Serial.println("Setting highTemp to: " + String(highTemp));
-				}
+            if (!owmData.success()) {
+                Serial.println("Parsing failed");
+                clientOwm.end();
+                return;
             }
+
+            owmTemp = owmData["main"]["temp"];
+            owmSunrise = owmData["sys"]["sunrise"].as<long>() + UTC_OFFSET;
+            owmSunset = owmData["sys"]["sunset"].as<long>() + UTC_OFFSET;
+            owmDescription = owmData["weather"][0]["main"].as<String>();
+
+            Serial.println("OWM temp: " + String(owmTemp));
+            Serial.println("OWM sunrise (UTC): " + unixDateToHumanString(owmSunrise));
+            Serial.println("OWM sunset (UTC): " + unixDateToHumanString(owmSunset));
+            Serial.println("OWM description: " + owmDescription);
+
+			if (uvLampMode == 1) {
+				uvStart = owmSunrise;
+				uvStop = owmSunset;
+
+				if (owmDescription == "Rain") {
+					Serial.println("Setting UV lamp start/stop to zero due to rain");
+					uvStart = 0;
+					uvStop = 0;
+				}
+
+                Serial.println("Setting uvStart to: " + unixDateToHumanString(uvStart));
+				Serial.println("Setting uvStop to: " + unixDateToHumanString(uvStop));
+			}
+
+			if (irLampMode == 1) {
+		    	unsigned long dayStart = nowNtp / 86400;
+	
+				irStart = owmSunrise;
+				if (dayStart != 0) {
+					irStop = unixDateFromStartAndHour(dayStart, IR_STOP_HOUR);
+				} else {
+					irStop = irStart + 14 * 60 * 60; // if NTP time could not be fetched, calculate irStop as 14 hours after irStart
+				}
+				
+				lowTemp = owmTemp - 0.5 + owmTempOffset;
+				highTemp = owmTemp + 0.5 + owmTempOffset;
+
+                Serial.println("Setting irStart to: " + unixDateToHumanString(irStart));
+				Serial.println("Setting irStop to: " + unixDateToHumanString(irStop));
+				Serial.println("Setting lowTemp to: " + String(lowTemp));
+				Serial.println("Setting highTemp to: " + String(highTemp));
+			}
+        } else {
+        	// fallback in case OWM data could not be fetched
+            Serial.println("Fallback in case OWM data could not be fetched");
+
+	    	unsigned long dayStart = nowNtp / 3600;
+	    	byte hour = dayStart % 24; 
+	    	dayStart /= 24;
+
+        	if (dayStart != 0) {
+        		// fallback to function mode
+				uvStart = unixDateFromStartAndHour(dayStart, UV_START_HOUR);
+				uvStop = unixDateFromStartAndHour(dayStart, UV_STOP_HOUR);
+				irStart = unixDateFromStartAndHour(dayStart, IR_START_HOUR);
+				irStop = unixDateFromStartAndHour(dayStart, IR_STOP_HOUR);
+				
+				lowTemp = getAdjustedValue(funcLowTemp, hour);
+				highTemp = getAdjustedValue(funcHighTemp, hour);
+
+                Serial.println("Setting uvStart to: " + unixDateToHumanString(uvStart));
+				Serial.println("Setting uvStop to: " + unixDateToHumanString(uvStop));
+                Serial.println("Setting irStart to: " + unixDateToHumanString(irStart));
+				Serial.println("Setting irStop to: " + unixDateToHumanString(irStop));
+				Serial.println("Setting lowTemp to: " + String(lowTemp));
+				Serial.println("Setting highTemp to: " + String(highTemp));
+        	} else {
+        		// probably no internet connection, keep lamps always active with fallback temperature range
+	        	uvStart = 0;
+	        	uvStop = BIG_POSITIVE;
+	        	irStart = 0;
+	        	irStop = BIG_POSITIVE;
+        		lowTemp = fallbackLowTemp;
+        		highTemp = fallbackHighTemp;
+                Serial.println("Setting uvStart to: " + unixDateToHumanString(uvStart));
+				Serial.println("Setting uvStop to: " + unixDateToHumanString(uvStop));
+                Serial.println("Setting irStart to: " + unixDateToHumanString(irStart));
+				Serial.println("Setting irStop to: " + unixDateToHumanString(irStop));
+				Serial.println("Setting lowTemp to: " + String(lowTemp));
+				Serial.println("Setting highTemp to: " + String(highTemp));
+        	}
         }
 
         clientOwm.end();
@@ -223,27 +275,43 @@ void funcCalculate(unsigned long now, unsigned long nowNtp) {
     	unsigned long dayStart = nowNtp / 3600;
     	byte hour = dayStart % 24; 
     	dayStart /= 24;
-    	
-		if (uvLampMode == 0) {
-		   	uvStart = unixDateFromStartAndHour(dayStart, UV_START_HOUR);
-		   	uvStop = unixDateFromStartAndHour(dayStart, UV_STOP_HOUR);
 
-           	Serial.println("Setting uvStart to: " + unixDateToHumanString(uvStart));
-			Serial.println("Setting uvStop to: " + unixDateToHumanString(uvStop));
-		}
-
-		if (irLampMode == 0) {
-		    irStart = unixDateFromStartAndHour(dayStart, IR_START_HOUR);
-		    irStop = unixDateFromStartAndHour(dayStart, IR_STOP_HOUR);
+    	if (dayStart != 0) {
+			if (uvLampMode == 0) {
+			   	uvStart = unixDateFromStartAndHour(dayStart, UV_START_HOUR);
+			   	uvStop = unixDateFromStartAndHour(dayStart, UV_STOP_HOUR);
 	
-		    lowTemp = getAdjustedValue(funcLowTemp, hour);
-		    highTemp = getAdjustedValue(funcHighTemp, hour);
-
-            Serial.println("Setting irStart to: " + unixDateToHumanString(irStart));
+	           	Serial.println("Setting uvStart to: " + unixDateToHumanString(uvStart));
+				Serial.println("Setting uvStop to: " + unixDateToHumanString(uvStop));
+			}
+	
+			if (irLampMode == 0) {
+			    irStart = unixDateFromStartAndHour(dayStart, IR_START_HOUR);
+			    irStop = unixDateFromStartAndHour(dayStart, IR_STOP_HOUR);
+		
+			    lowTemp = getAdjustedValue(funcLowTemp, hour);
+			    highTemp = getAdjustedValue(funcHighTemp, hour);
+	
+	            Serial.println("Setting irStart to: " + unixDateToHumanString(irStart));
+				Serial.println("Setting irStop to: " + unixDateToHumanString(irStop));
+				Serial.println("Setting lowTemp to: " + String(lowTemp));
+				Serial.println("Setting highTemp to: " + String(highTemp));
+			}
+    	} else {
+		    // probably no internet connection, keep lamps always active with fallback temperature range
+        	uvStart = 0;
+        	uvStop = BIG_POSITIVE;
+        	irStart = 0;
+        	irStop = BIG_POSITIVE;
+    		lowTemp = fallbackLowTemp;
+    		highTemp = fallbackHighTemp;
+			Serial.println("Setting uvStart to: " + unixDateToHumanString(uvStart));
+			Serial.println("Setting uvStop to: " + unixDateToHumanString(uvStop));
+			Serial.println("Setting irStart to: " + unixDateToHumanString(irStart));
 			Serial.println("Setting irStop to: " + unixDateToHumanString(irStop));
 			Serial.println("Setting lowTemp to: " + String(lowTemp));
 			Serial.println("Setting highTemp to: " + String(highTemp));
-		}
+    	}
         Serial.println("-----END Function-----");
 	}
 }
@@ -252,8 +320,12 @@ void updateLamps(unsigned long now, unsigned long nowNtp) {
     if (now - prevLamps > LAMPS_TIME) {
         prevLamps = now;
 
+		if (nowNtp == 0) {
+			nowNtp = uvStart + 1000;
+		}
+		
 		if (irLampMode != 2) { // not manual
-	        if ((nowNtp > irStart && nowNtp < irStop) || nowNtp == 0) {
+	        if (nowNtp >= irStart && nowNtp <= irStop) {
 	            if (!isnan(dhtTemp) && dhtTemp <= lowTemp && (irLamp == 0 || irLamp == 2)) {
 	                irLamp = 1;
 	                Serial.println("Automatic IR lamp on");
@@ -271,17 +343,7 @@ void updateLamps(unsigned long now, unsigned long nowNtp) {
 		}
 
 		if (uvLampMode != 2) { // not manual
-	        if (nowNtp == 0) { // time could not be fetched for NTP server
-	            if (irLamp == 0 && (uvLamp == 1 || uvLamp == 2)) {
-	                uvLamp = 0;
-	                Serial.println("Automatic UV lamp off (temperature fallback)");
-	                digitalWrite(UV_PIN, LOW);
-	            } else if (irLamp == 1 && (uvLamp == 0 || uvLamp == 2)) {
-	                uvLamp = 1;
-	                Serial.println("Automatic UV lamp on (temperature fallback)");
-	                digitalWrite(UV_PIN, HIGH);
-	            }
-	        } else if (nowNtp > uvStart && nowNtp < uvStop) {
+			if (nowNtp >= uvStart && nowNtp <= uvStop) {
 	            if (uvLamp == 0 || uvLamp == 2) {
 	                uvLamp = 1;
 	                Serial.println("Automatic UV lamp on");
@@ -345,8 +407,7 @@ void handleHttpRequest() {
 
             if (tryCycles++ > 500) {
                 aborted = true;
-                Serial.println();
-                Serial.print("Aborted! (maximuim try cycles reached)");
+                Serial.println("Aborted! (maximuim try cycles reached)");
                 break;
             }
         }
@@ -363,7 +424,7 @@ void handleHttpRequest() {
 
             if (req.indexOf("/info") != -1) {
                 Serial.println("Get data request");
-                val = "Temp: " + String(dhtTemp) + "   Humidity: " + String(dhtHumidity);
+                val = "DHT Temp: " + String(dhtTemp) + ", DHT Humidity: " + String(dhtHumidity);
 
                 val += "<br/><br/>IR lamp mode: ";
                 if (irLampMode == 0) {
@@ -401,6 +462,11 @@ void handleHttpRequest() {
 
                 val += "<br/><br/>High temp set to: " + String(highTemp);
                 val += "<br/>Low temp set to: " + String(lowTemp);
+                val += "<br/><br/>OWM CityID: " + String(owmCityId);
+                val += "<br/>OWM Sunrise: " + unixDateToHumanString(owmSunrise);
+                val += "<br/>OWM Sunset: " + unixDateToHumanString(owmSunset);
+                val += "<br/>OWM Description: " + owmDescription;
+                val += "<br/><br/>DHTpin: D2, IRpin: D3, UVpin: D5";
             } else if (req.indexOf("/uvLamp") != -1) {
                 Serial.println("UV lamp request");
                 if (req.indexOf("/forceOn") != -1) {
@@ -421,7 +487,7 @@ void handleHttpRequest() {
                     uvLampMode = 1;
                     prevOwm = BIG_NEGATIVE;
             	    Serial.println(val);
-                } else if (req.indexOf("/function") != -1) {
+                } else if (req.indexOf("/func") != -1) {
                     val = "UV lamp set to function";
                     uvLamp = 2;
                     uvLampMode = 0;
@@ -448,7 +514,7 @@ void handleHttpRequest() {
                     irLampMode = 1;
                     prevOwm = BIG_NEGATIVE;
             	    Serial.println(val);
-                } else if (req.indexOf("/function") != -1) {
+                } else if (req.indexOf("/func") != -1) {
                     val = "IR lamp set to function";
                     irLamp = 2;
                     irLampMode = 0;
@@ -475,10 +541,10 @@ void handleHttpRequest() {
                     Serial.println("owmCityId: " + String(owmCityId));
                     val = "Setting owmCityId to: " + String(owmCityId);
                     prevOwm = BIG_NEGATIVE;
-                } else if (req.indexOf("tempOffsetOwm") != -1) {
-                    tempOffsetOwm = value.toFloat();
-                    Serial.println("tempOffsetOwm: " + String(tempOffsetOwm));
-                    val = "Setting tempOffsetOwm to: " + String(tempOffsetOwm);
+                } else if (req.indexOf("owmTempOffset") != -1) {
+                    owmTempOffset = value.toFloat();
+                    Serial.println("owmTempOffset: " + String(owmTempOffset));
+                    val = "Setting owmTempOffset to: " + String(owmTempOffset);
                     prevOwm = BIG_NEGATIVE;
                 }
             } else {
@@ -487,16 +553,16 @@ void handleHttpRequest() {
                 val += "    - /info<br/>";
                 val += "    - /irLamp/forceOn<br/>";
                 val += "    - /irLamp/forceOff<br/>";
-                val += "    - /irLamp/function<br/>";
+                val += "    - /irLamp/func<br/>";
                 val += "    - /irLamp/owm<br/>";
                 val += "    - /uvLamp/forceOn<br/>";
                 val += "    - /uvLamp/forceOff<br/>";
-                val += "    - /uvLamp/function<br/>";
+                val += "    - /uvLamp/func<br/>";
                 val += "    - /uvLamp/owm<br/>";
                 val += "    - /set?lowTemp=29.0<br/>";
                 val += "    - /set?highTemp=30.0<br/>";
-                val += "    - /set?cityId=2562305<br/>";
-                val += "    - /set?tempOffsetOwm=1.5<br/>";
+                val += "    - /set?owmCityId=2562305<br/>";
+                val += "    - /set?owmTempOffset=1.5<br/>";
             }
 
             client.flush();
