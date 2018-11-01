@@ -71,7 +71,7 @@ unsigned long uvStart;
 unsigned long uvStop;
 
 short irLamp = 2; // 0 off, 1 on, 2 not set
-short irLampMode = 1; // 0 function, 1 owm, 2 manual
+short irLampMode = 0; // 0 function, 1 owm, 2 manual
 const short IR_START_HOUR = 7;
 const short IR_STOP_HOUR = 21;
 unsigned long irStart;
@@ -615,4 +615,3 @@ String unixDateToHumanString(unsigned long unix) {
 unsigned long unixDateFromStartAndHour(unsigned long dayStart, short hour) {
 	return ((dayStart * 24 + hour) * 60) * 60;
 }
-
