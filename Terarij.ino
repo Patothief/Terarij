@@ -114,7 +114,7 @@ void setup() {
 
     Serial.println("==========================================");
 
-    pinMode(IR_PIN, OUTPUT);
+    pinMode(IR_PIN, INPUT_PULLUP);
     pinMode(UV_PIN, OUTPUT);
 }
 
@@ -462,6 +462,8 @@ void handleHttpRequest() {
 
                 val += "<br/><br/>High temp set to: " + String(highTemp);
                 val += "<br/>Low temp set to: " + String(lowTemp);
+                val += "<br/><br/>Max temp set to: " + String(funcHighTemp);
+                val += "<br/>Min temp set to: " + String(funcLowTemp);
                 val += "<br/><br/>OWM CityID: " + String(owmCityId);
                 val += "<br/>OWM Sunrise: " + unixDateToHumanString(owmSunrise);
                 val += "<br/>OWM Sunset: " + unixDateToHumanString(owmSunset);
