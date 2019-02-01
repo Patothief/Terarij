@@ -114,7 +114,7 @@ void setup() {
 
     Serial.println("==========================================");
 
-    pinMode(IR_PIN, INPUT_PULLUP);
+    pinMode(IR_PIN, OUTPUT);
     pinMode(UV_PIN, OUTPUT);
 }
 
