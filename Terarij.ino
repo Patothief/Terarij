@@ -1,17 +1,16 @@
-#include <ESP8266HTTPClient.h>
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
 #include <EasyNTPClient.h>
 #include <WiFiUdp.h>
 #include <DHT.h>
+#include <ThingSpeak.h>
 
 #define DHT_PIN 4     // D2
 #define IR_PIN 0     // D3
 #define UV_PIN 14    // D5
 #define DHT_TYPE DHT22   // there are multiple kinds of DHT sensors
 
-//const char* ssid = "Infoart";
-//const char* password = "Iart236WEP707";
 const char* ssid = "AMIS-1-002196675318";
 const char* password = "malamerica";
 
@@ -39,8 +38,8 @@ WiFiUDP udp;
 EasyNTPClient ntpClient(udp, "hr.pool.ntp.org", UTC_OFFSET);
 
 WiFiClient clientThingSpeak;
-String thingSpeakApiKey = "QFJR5FAY6XNTE4NZ";     //  Write API key from ThingSpeak
-const char* thingSpeakServer = "api.thingspeak.com";
+const char* thingSpeakApiKey = "QFJR5FAY6XNTE4NZ";     //  Write API key from ThingSpeak
+unsigned long thingSpeakChannelNumber = 564148;
 
 HTTPClient clientOwm;
 const String OWM_API_KEY = "1635308b354d17ba10ad50eade774a06";	 // Open Weather Map API Key
@@ -116,6 +115,10 @@ void setup() {
 
     pinMode(IR_PIN, OUTPUT);
     pinMode(UV_PIN, OUTPUT);
+
+    dht.begin();
+
+    ThingSpeak.begin(clientThingSpeak);
 }
 
 void loop() {
@@ -160,20 +163,21 @@ void getOwmData(unsigned long now, unsigned long nowNtp) {
 
         int httpCode = clientOwm.GET();
 
-        StaticJsonBuffer<1024> jsonBuffer;
+        StaticJsonDocument<1024> owmData;
 
         if (httpCode == HTTP_CODE_OK) {
             String payload = clientOwm.getString();
             Serial.println(payload);
             
-            JsonObject& owmData = jsonBuffer.parseObject(payload);
+            auto error = deserializeJson(owmData, payload);
+            if (error) {
+              Serial.print(F("deserializeJson() failed with code "));
+              Serial.println(error.c_str());
 
-            if (!owmData.success()) {
-                Serial.println("Parsing failed");
-                clientOwm.end();
-                return;
+              clientOwm.end();
+              return;
             }
-
+            
             owmTemp = owmData["main"]["temp"];
             owmSunrise = owmData["sys"]["sunrise"].as<long>() + UTC_OFFSET;
             owmSunset = owmData["sys"]["sunset"].as<long>() + UTC_OFFSET;
@@ -364,30 +368,16 @@ void updateThingSpeak(unsigned long now) {
 
         Serial.println("Sending data to ThingSpeak server");
 
-        if (clientThingSpeak.connect(thingSpeakServer, 80)) {
-            String postStr = thingSpeakApiKey;
+        ThingSpeak.setField(1, dhtTemp);
+        ThingSpeak.setField(2, dhtHumidity);
+        ThingSpeak.setField(3, irLamp);
+        ThingSpeak.setField(4, uvLamp);
 
-            postStr += "&field1=";
-            postStr += String(dhtTemp);
-            postStr += "&field2=";
-            postStr += String(dhtHumidity);
-            postStr += "&field3=";
-            postStr += String(irLamp);
-            postStr += "&field4=";
-            postStr += String(uvLamp);
-            postStr += "\r\n\r\n";
-
-            clientThingSpeak.print("POST /update HTTP/1.1\n");
-            clientThingSpeak.print("Host: api.thingspeak.com\n");
-            clientThingSpeak.print("Connection: close\n");
-            clientThingSpeak.print("X-THINGSPEAKAPIKEY: " + thingSpeakApiKey + "\n");
-            clientThingSpeak.print("Content-Type: application/x-www-form-urlencoded\n");
-            clientThingSpeak.print("Content-Length: ");
-            clientThingSpeak.print(postStr.length());
-            clientThingSpeak.print("\n\n");
-            clientThingSpeak.print(postStr);
-
-            clientThingSpeak.stop();
+        int status = ThingSpeak.writeFields(thingSpeakChannelNumber, thingSpeakApiKey);
+        if(status == 200){
+            Serial.println("ThingSpeak update successful.");
+        } else {
+            Serial.println("Problem updating ThingSpeak. HTTP error code " + String(status));
         }
     }
 }
