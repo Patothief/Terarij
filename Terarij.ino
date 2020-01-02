@@ -1,10 +1,10 @@
-#include <ArduinoJson.h>
+#include <ArduinoJson.h> // AdafruitJson
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
-#include <EasyNTPClient.h>
+#include <EasyNTPClient.h> // EasyNTPClient by Harsha
 #include <WiFiUdp.h>
-#include <DHT.h>
-#include <ThingSpeak.h>
+#include <DHT.h> // Adafruit Unified Sensor; DHT Sensor Library
+#include <ThingSpeak.h> // ThingSpeak by MathWorks
 
 #define DHT_PIN 4     // D2
 #define IR_PIN 0     // D3
