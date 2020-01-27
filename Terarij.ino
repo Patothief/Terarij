@@ -11,8 +11,8 @@
 #define UV_PIN 14    // D5
 #define DHT_TYPE DHT22   // there are multiple kinds of DHT sensors
 
-const char* ssid = "AMIS-1-002196675318";
-const char* password = "malamerica";
+const char* ssid = "USS Enterprise NCC-1701-D";
+const char* password = "01092007";
 
 DHT dht(DHT_PIN, DHT_TYPE);
 WiFiServer server(80);
@@ -38,8 +38,8 @@ WiFiUDP udp;
 EasyNTPClient ntpClient(udp, "hr.pool.ntp.org", UTC_OFFSET);
 
 WiFiClient clientThingSpeak;
-const char* thingSpeakApiKey = "QFJR5FAY6XNTE4NZ";     //  Write API key from ThingSpeak
-unsigned long thingSpeakChannelNumber = 564148;
+const char* thingSpeakApiKey = "H1E4Q3693X4M04DI";     //  Write API key from ThingSpeak
+unsigned long thingSpeakChannelNumber = 950226;
 
 HTTPClient clientOwm;
 const String OWM_API_KEY = "1635308b354d17ba10ad50eade774a06";	 // Open Weather Map API Key
@@ -71,8 +71,8 @@ unsigned long uvStop;
 
 short irLamp = 2; // 0 off, 1 on, 2 not set
 short irLampMode = 0; // 0 function, 1 owm, 2 manual
-const short IR_START_HOUR = 7;
-const short IR_STOP_HOUR = 21;
+const short IR_START_HOUR = 8;
+const short IR_STOP_HOUR = 20;
 unsigned long irStart;
 unsigned long irStop;
 
