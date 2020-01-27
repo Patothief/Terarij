@@ -1,0 +1,25 @@
+Općenito
+========================================
+- na slici (papir koji sam ti dao) su greškom zamijenjene UV i IR lampa, dakle UV relej mora ići na D5 a IR relej na D3
+- lampe imaju fallback tako da je moguće da se same pale/gase bilo kada ukoliko nestane wifi signala ili senzor ne pošalje podatke - to je zato da se gušter ne smrnze
+- lampa ima 4 moda rada: forsirano on, forsirano off, funkcija i owm. Funkcija znaći da će upaljenost ovisiti o start i stop vremenu te ukoliko se radi o grijaču, ciljati će temperaturu po gausovoj distribuciji s time da je maksimum u 15h. OWM znaći da se koriste podaci sa OpenWeatherMap servisa. U tom slućaju se lampe ravnaju po izlasku i zalasku sunca u zadanom gradu (owmCityId). Dodatno, ako je u zadanom gradu oblačno, onda će se isključiti i UV lampa.
+- tvoj branch Terarija na GitHubu je: https://github.com/Patothief/Terarij/tree/marko (ako trebaš access, viči)
+- nodeMCU ima na sebi mali reset button (ako će ti ikada trebati za vraćanje na defaulte), piše RST, blizu USB konektora
+
+ 
+Praćenje podataka preko mobitela
+========================================
+Koristi se ThingSpeak web ili android aplikacija. Tvoj channelId je 950226 (moj je 564148). Kanal ti se zove TerrariumMarko.
+
+
+Upravljanje NodeMCU-om
+========================================
+* NodeMCU servira web sučelje kojem se može pristupiti sa iste wifi mreže (dakle ne ide preko vanjskog IP-a, npr. preko mobilne data konekcije).
+* Moraš doznati IP adresu koju je NodeMCU dobio. Najlakše je logirati se na svoj ruter i tamo vidjeti koju je IP adresu dobio.
+* Sučelju web servera se zatim pristupa preko: http://<lokalni ip> (npr. 192.168.1.64). To će ispisati popis komandi. Npr.:
+	* http://<lokalni ip>/info će dati korisne informacije
+	* http://<lokalni ip>/irLamp/forceOn će uključiti lampu grijač, no matter what - korisno tijekom setupa
+	* http://<lokalni ip>/irLamp/func postavlja lampu u mod "funkcije"
+* owmTempOffset je vrijednost koja se oduzima od temperature u zadanom gradu ukoliko je grijač lampa postavljen na mod OWM. To je zato što je u u Africi npr. ipak prevruće.
+* lowTemp i highTemp su vrijednosti unutar kojih će software ciljati temperaturu tj. kada temperatura sa senzora padne ispod lowTemp, grijač se pali, a kada naraste iznad highTemp onda se gasi. Razmak od 1.0 je meni ok.
+* default grad je Blima, Niger (id=2446796)
