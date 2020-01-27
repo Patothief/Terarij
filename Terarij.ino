@@ -64,8 +64,8 @@ float highTemp;
 
 short uvLamp = 2; // 0 off, 1 on, 2 not set
 short uvLampMode = 1; // 0 function, 1 owm, 2 manual
-const short UV_START_HOUR = 11;
-const short UV_STOP_HOUR = 21;
+const short UV_START_HOUR = 10;
+const short UV_STOP_HOUR = 20;
 unsigned long uvStart;
 unsigned long uvStop;
 
