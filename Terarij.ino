@@ -1,4 +1,4 @@
-#include <ArduinoJson.h> // AdafruitJson
+#include <ArduinoJson.h> // ArduinoJson by Benoit
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <EasyNTPClient.h> // EasyNTPClient by Harsha
@@ -35,7 +35,8 @@ unsigned long prevThingSpeak = 0;
 const unsigned long UTC_OFFSET = 2 * 60 * 60;
 
 WiFiUDP udp;
-EasyNTPClient ntpClient(udp, "hr.pool.ntp.org", UTC_OFFSET);
+//EasyNTPClient ntpClient(udp, "hr.pool.ntp.org", UTC_OFFSET);
+EasyNTPClient ntpClient(udp, "185.103.216.7", UTC_OFFSET);
 
 WiFiClient clientThingSpeak;
 const char* thingSpeakApiKey = "QFJR5FAY6XNTE4NZ";     //  Write API key from ThingSpeak
@@ -98,8 +99,13 @@ void setup() {
 			break;
 		}
     }
+
     Serial.println("");
-    Serial.println("WiFi connected");
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("WIFI connected.");
+    } else {
+      Serial.println("WIFI NOT connected.");
+    }
 
     // Start the server
     server.begin();
@@ -159,7 +165,8 @@ void getOwmData(unsigned long now, unsigned long nowNtp) {
 
         Serial.println("-----Getting data from OWM server-----");
 
-        clientOwm.begin("http://api.openweathermap.org/data/2.5/weather?id=" + owmCityId + "&units=metric" + "&appid=" + OWM_API_KEY);
+//        clientOwm.begin("http://api.openweathermap.org/data/2.5/weather?id=" + owmCityId + "&units=metric&appid=" + OWM_API_KEY);
+        clientOwm.begin("http://37.139.1.159/data/2.5/weather?id=" + owmCityId + "&units=metric&appid=" + OWM_API_KEY);
 
         int httpCode = clientOwm.GET();
 
